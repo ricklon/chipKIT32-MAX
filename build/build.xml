@@ -1018,6 +1018,11 @@ Description: chipKIT MPIDE Development environment
         <echo message="${aws.bucket}"/>
         <echo message="${version}"/>
     </target>
-
+    <!-- get the chipKIT core and copy it into place for use with MPIDE. -->
+    <target name="get-chipkitcore">
+      <mkdir dir="tmp" />
+      <get dest="tmp" src="https://github.com/chipKIT32/chipKIT-core/archive/master.zip" usetimestamp="true" verbose="false"/>
+      <unzip dest="tmp" overwrite="false" src="tmp/master.zip"/>
+    </target>
 
 </project>
