@@ -276,18 +276,21 @@ void unlockPps()
 // Note that this function will fail if the pps system is locked, or if
 // <pin> can't be mapped to <func>. There are only certain pins (up to 8)
 // that can be mapped ro each <func>.
+#include <errno.h>
 boolean mapPps(uint8_t pin, ppsFunctionType func)
 {
-	p32_ppsin *		pps;
+	volatile p32_ppsin *		pps;
 
     // if the pps system is locked, then don't do anything
     if (ppsGlobalLock)
     {
+        errno = EPERM;
         return false;
     }
     
     if (!isPpsPin(pin))
     {
+        errno = ENOENT;
         return false;
     }
 
@@ -300,6 +303,7 @@ boolean mapPps(uint8_t pin, ppsFunctionType func)
         ((ppsOutputFromFunc(func) > NUM_PPS_OUT) && ppsFuncIsOutput(func))
     )
 	{
+        errno = ENODEV;
 		return false;
 	}
 
@@ -308,6 +312,7 @@ boolean mapPps(uint8_t pin, ppsFunctionType func)
 	*/
 	if ((ppsSetFromPin(pin) & ppsSetFromFunc(func)) == 0)
 	{
+        errno = ENXIO;
 		return false;
 	}
 
@@ -329,6 +334,7 @@ boolean mapPps(uint8_t pin, ppsFunctionType func)
 	pps = ppsOutputRegister(pin);
 	*pps = ppsOutputSelect(func);
    }
+    errno = 0;
 	return true;
 	
 }
@@ -715,7 +721,7 @@ uint32_t millisecondCoreTimerService(uint32_t curTime)
 **
 */
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16, vector(_CORE_TIMER_VECTOR),interrupt(IPL7SRS))) CoreTimerHandler(void)
+void __attribute__((nomips16, at_vector(_CORE_TIMER_VECTOR),interrupt(IPL7SRS))) CoreTimerHandler(void)
 #else
 void __attribute__((interrupt(),nomips16)) CoreTimerHandler(void)
 #endif

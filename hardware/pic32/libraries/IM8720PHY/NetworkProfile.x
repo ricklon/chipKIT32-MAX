@@ -52,7 +52,11 @@
 #define IM8720PHY
 
 // board specific stuff
-#if defined(_BOARD_MEGA_) || defined(_BOARD_CEREBOT_MX7CK_) || defined(_BOARD_CEREBOT_32MX7_)
+#if defined(_BOARD_MEGA_)
+
+    #include <MAX32-Pins.x>
+    
+#elif defined(_BOARD_CEREBOT_MX7CK_) || defined(_BOARD_CEREBOT_32MX7_)
 
     #include <ProMX7-Pins.x>
     

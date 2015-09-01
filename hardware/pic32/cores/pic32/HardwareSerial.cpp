@@ -61,6 +61,7 @@
 //*	Jul 26, 2012	<GeneApperson> Added PPS support for PIC32MX1xx/MX2xx devices 
 //* Nov 23, 2012    <BrianSchmalz> Auto-detect when to use BRGH = 1 (high baud rates)
 //*	Feb  6, 2013	<GeneApperson> Removed dependencies on the Microchip plib library
+//* Jan 27, 2014    <Skyler Brandt> Added support for RS485 addressing
 //************************************************************************
 #if !defined(__LANGUAGE_C__)
 #define __LANGUAGE_C__
@@ -141,6 +142,7 @@ HardwareSerial::HardwareSerial(p32_uart * uartT, int irqT, int vecT, int iplT, i
 	ipl  = (uint8_t)iplT;
 	spl  = (uint8_t)splT;
     isr  = isrHandler;
+    rxIntr = NULL;
 
 #if defined(__PIC32MX1XX__) || defined(__PIC32MX2XX__) || defined(__PIC32MZXX__) || defined(__PIC32MX47X__)
 	pinTx = (uint8_t)pinT;
@@ -195,6 +197,13 @@ void HardwareSerial::begin(unsigned long baudRate)
 	purge();
 
 #if defined(__PIC32MX1XX__) || defined(__PIC32MX2XX__) || defined(__PIC32MZXX__) || defined(__PIC32MX47X__)
+
+    // set the pins to digital, just in case they 
+    // are analog pins. The serial controller will not
+    // set these to digital.
+    pinMode(pinTx, INPUT); // let serial controller set as output, keep tri-stated for now.
+    pinMode(pinRx, INPUT);
+
 	/* Map the UART TX to the appropriate pin.
 	*/
     mapPps(pinTx, ppsTx);
@@ -202,9 +211,23 @@ void HardwareSerial::begin(unsigned long baudRate)
 	/* Map the UART RX to the appropriate pin.
 	*/
     mapPps(pinRx, ppsRx);
+
+// the only UART on a non-PPS MX that conflicts with an analog
+// pin is UART5 on MX 5,6,& 7 64 pin parts only.
+#elif __PIC32_PINS__ == 64 && (defined(__PIC32MX5XX__) || defined(__PIC32MX6XX__)  || defined(__PIC32MX7XX__))
+
+    // see if this is UART5
+    if(uart == ((p32_uart *) _UART5_BASE_ADDRESS))
+    {
+        // RB8 is AN8 & U5RX
+        // RB14 is AN14 & U5TX
+        // set as digital pins
+        AD1PCFGbits.PCFG8 = 1;
+        AD1PCFGbits.PCFG14 = 1;
+    }
 #endif
 
-        setIntVector(vec, isr);
+    setIntVector(vec, isr);
 
 	/* Set the interrupt privilege level and sub-privilege level
 	*/
@@ -213,13 +236,11 @@ void HardwareSerial::begin(unsigned long baudRate)
         // MZ has 2 more vectors to worry about
 #if defined(__PIC32MZXX__)
 
-        static uint32_t * const pISROffset = ((uint32_t *) &OFF000);
-
         // the MZ part works off of offset tables
         // we must fill in the tx and rx VECs to point
         // to the ERR VEC so all 3 VECs use the same ISR
-        pISROffset[vec+1] = pISROffset[vec];
-        pISROffset[vec+2] = pISROffset[vec];
+        setIntVector(vec+1, isr);
+        setIntVector(vec+2, isr);
 
         // and set the priorities for the other 2 vectors.
         setIntPriority(vec+1, ipl, spl);
@@ -250,6 +271,112 @@ void HardwareSerial::begin(unsigned long baudRate)
         uart->uxMode.reg = (1 << _UARTMODE_ON) | (1 << _UARTMODE_BRGH);  // enable UART module
     }
     uart->uxSta.reg  = (1 << _UARTSTA_UTXEN) + (1 << _UARTSTA_URXEN);    // enable transmitter and receiver
+}
+
+/* ------------------------------------------------------------ */
+/***	HardwareSerial::begin
+**
+**	Parameters:
+**		baudRate		- baud rate to use on port
+**      address         - address for RS485 communication
+**
+**	Return Value:
+**		none
+**
+**	Errors:
+**		none
+**
+**	Description:
+**		Initialize the UART for use, setting the baud rate to the
+**		requested value, data size of 9-bits, and no parity and 
+**      address detection mode
+*/
+
+void HardwareSerial::begin(unsigned long baudRate, uint8_t address) {
+	/* Initialize the receive buffer.
+	*/
+	purge();
+
+#if defined(__PIC32MX1XX__) || defined(__PIC32MX2XX__) || defined(__PIC32MZXX__) || defined(__PIC32MX47X__)
+
+    // set the pins to digital, just in case they 
+    // are analog pins. The serial controller will not
+    // set these to digital.
+    pinMode(pinTx, INPUT); // let serial controller set as output, keep tri-stated for now.
+    pinMode(pinRx, INPUT);
+
+	/* Map the UART TX to the appropriate pin.
+	*/
+    mapPps(pinTx, ppsTx);
+
+	/* Map the UART RX to the appropriate pin.
+	*/
+    mapPps(pinRx, ppsRx);
+
+// the only UART on a non-PPS MX that conflicts with an analog
+// pin is UART5 on MX 5,6,& 7 64 pin parts only.
+#elif __PIC32_PINS__ == 64 && (defined(__PIC32MX5XX__) || defined(__PIC32MX6XX__)  || defined(__PIC32MX7XX__))
+
+    // see if this is UART5
+    if(uart == ((p32_uart *) _UART5_BASE_ADDRESS))
+    {
+        // RB8 is AN8 & U5RX
+        // RB14 is AN14 & U5TX
+        // set as digital pins
+        AD1PCFGbits.PCFG8 = 1;
+        AD1PCFGbits.PCFG14 = 1;
+    }
+#endif
+
+    setIntVector(vec, isr);
+
+	/* Set the interrupt privilege level and sub-privilege level
+	*/
+	setIntPriority(vec, ipl, spl);
+
+        // MZ has 2 more vectors to worry about
+#if defined(__PIC32MZXX__)
+
+        // the MZ part works off of offset tables
+        // we must fill in the tx and rx VECs to point
+        // to the ERR VEC so all 3 VECs use the same ISR
+        setIntVector(vec+1, isr);
+        setIntVector(vec+2, isr);
+
+        // and set the priorities for the other 2 vectors.
+        setIntPriority(vec+1, ipl, spl);
+        setIntPriority(vec+2, ipl, spl);
+#endif
+
+    /* Clear the interrupt flags, and set the interrupt enables for the
+    ** interrupts used by this UART.
+    */
+    ifs->clr = bit_rx + bit_tx + bit_err;	//clear all interrupt flags
+
+    iec->clr = bit_rx + bit_tx + bit_err;	//disable all interrupts
+    iec->set = bit_rx;						//enable rx interrupts
+
+    /* Initialize the UART itself.
+    **	http://www.chipkit.org/forum/viewtopic.php?f=7&t=213&p=948#p948
+    ** Use high baud rate divisor for bauds over LOW_HIGH_BAUD_SPLIT
+    */
+    uart->uxMode.reg = 0;
+    uart->uxSta.reg = 0;
+    if (baudRate < LOW_HIGH_BAUD_SPLIT) {
+        // calculate actual BAUD generate value.
+        uart->uxBrg.reg = ((__PIC32_pbClk / 16 / baudRate) - 1);  
+        // set to 9 data bits, no parity
+        uart->uxMode.set = 0b11 << _UARTMODE_PDSEL;                             
+    } else {
+        // calculate actual BAUD generate value.
+        uart->uxBrg.reg = ((__PIC32_pbClk / 4 / baudRate) - 1);
+        // set to 9 data bits, no parity
+        uart->uxMode.set =  (1 << _UARTMODE_BRGH) + (0b11 << _UARTMODE_PDSEL); 
+    }
+    // set address of RS485 slave, enable transmitter and receiver and auto address detection
+    uart->uxSta.set = (1 << _UARTSTA_ADM_EN) + (address << _UARTSTA_ADDR) + (1 << _UARTSTA_UTXEN) + (1 << _UARTSTA_URXEN);  
+    enableAddressDetection(); // enable auto address detection
+    uart->uxMode.set = 1 << _UARTMODE_ON; // enable UART module
 }
 
 /* ------------------------------------------------------------ */
@@ -454,6 +581,11 @@ size_t HardwareSerial::write(uint8_t theChar)
     return 1;
 }
 
+// Hardware serial is always connected regardless.
+HardwareSerial::operator int() {
+    return 1;
+}
+
 /* ------------------------------------------------------------ */
 /***	HardwareSerial::doSerialInt
 **
@@ -484,18 +616,26 @@ void HardwareSerial::doSerialInt(void)
 	if ((ifs->reg & bit_rx) != 0)
 	{
 		ch = uart->uxRx.reg;
-		bufIndex	= (rx_buffer.head + 1) % RX_BUFFER_SIZE;
-	
-		/* If we should be storing the received character into the location
-		** just before the tail (meaning that the head would advance to the
-		** current location of the tail), we're about to overflow the buffer
-		** and so we don't write the character or advance the head.
-		*/
-		if (bufIndex != rx_buffer.tail)
-		{
-			rx_buffer.buffer[rx_buffer.head] = ch;
-			rx_buffer.head = bufIndex;
-		}
+        if (rxIntr != NULL) {
+            /* If we have had an interrupt callback routine defined then call
+            ** that instead of adding the character to the queue. Pass the
+            ** received character to the function for processing.
+            */
+            rxIntr(ch);
+        } else {
+            bufIndex	= (rx_buffer.head + 1) % RX_BUFFER_SIZE;
+        
+            /* If we should be storing the received character into the location
+            ** just before the tail (meaning that the head would advance to the
+            ** current location of the tail), we're about to overflow the buffer
+            ** and so we don't write the character or advance the head.
+            */
+            if (bufIndex != rx_buffer.tail)
+            {
+                rx_buffer.buffer[rx_buffer.head] = ch;
+                rx_buffer.head = bufIndex;
+            }
+        }
 
 		/* Clear the interrupt flag.
 		*/
@@ -512,6 +652,26 @@ void HardwareSerial::doSerialInt(void)
 		ifs->clr = bit_tx;
 	}
 
+}
+
+/* Attach the interrupt by storing a function pointer in the rxIntr variable */
+void HardwareSerial::attachInterrupt(void (*callback)(int)) {
+    rxIntr = callback;
+}
+
+/* Detatching the interrupt is as simple as setting the rxIntr to null. */
+void HardwareSerial::detachInterrupt() {
+    rxIntr = NULL;
+}
+
+/* Sets the bit in the UART status register that enables address detection */
+void HardwareSerial::enableAddressDetection(void) {
+    uart->uxSta.set = 1 << _UARTSTA_ADDEN;
+}
+
+/* Clears the bit in the UART status register that enables address detection */
+void HardwareSerial::disableAddressDetection(void) {
+    uart->uxSta.clr = 1 << _UARTSTA_ADDEN;
 }
 
 /* ------------------------------------------------------------ */
@@ -567,6 +727,15 @@ boolean	USBstoreDataRoutine(const byte *buffer, int length)
 {
     unsigned int	i;
 
+    // If we have a receive callback defined then repeatedly
+    // call it with each character.
+    if (Serial.rxIntr != NULL) {
+        for (i = 0; i < length; i++) {
+            Serial.rxIntr(buffer[i]);
+        }
+        return true;
+    }
+
     // Put each byte into the serial recieve buffer
     for (i=0; i<length; i++)
 	{
@@ -591,10 +760,11 @@ USBSerial::USBSerial(ring_buffer	*rx_buffer)
 	_rx_buffer			=	rx_buffer;
 	_rx_buffer->head	=	0;
 	_rx_buffer->tail	=	0;
+    rxIntr = NULL;
 }
 
 USBSerial::operator int() {
-    return gConnected ? 1 : 0;
+    return gCdcacm_active ? 1 : 0;
 }
 
 #ifdef _DEBUG_USB_VIA_SERIAL0_
@@ -626,6 +796,14 @@ void USBSerial::begin(unsigned long baudRate)
 //*******************************************************************************************
 void USBSerial::end()
 {
+}
+
+//*******************************************************************************************
+extern "C" uint8_t *cdcacm_get_line_coding();
+unsigned long USBSerial::getBaudRate() {
+    uint8_t *line_coding = cdcacm_get_line_coding();
+    uint32_t br = line_coding[0] | (line_coding[1] << 8) | (line_coding[2] << 16) | (line_coding[3] << 24);
+    return br;
 }
 
 //*******************************************************************************************
@@ -697,6 +875,16 @@ unsigned char	usbBuf[4];
 	
 	cdcacm_print(usbBuf, 1);
     return 1;
+}
+
+/* Attach the interrupt by storing a function pointer in the rxIntr variable */
+void USBSerial::attachInterrupt(void (*callback)(int)) {
+    rxIntr = callback;
+}
+
+/* Detatching the interrupt is as simple as setting the rxIntr to null. */
+void USBSerial::detachInterrupt() {
+    rxIntr = NULL;
 }
 
 //*	testing showed 63 gave better speed results than 64
@@ -779,7 +967,7 @@ extern "C" {
 #if defined(_SER0_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER0_VECTOR),interrupt(_SER0_IPL_ISR))) IntSer0Handler(void)
+void __attribute__((nomips16,at_vector(_SER0_VECTOR),interrupt(_SER0_IPL_ISR))) IntSer0Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer0Handler(void)
 #endif
@@ -811,7 +999,7 @@ void __attribute__((interrupt(), nomips16)) IntSer0Handler(void)
 #if defined(_SER1_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER1_VECTOR),interrupt(_SER1_IPL_ISR))) IntSer1Handler(void)
+void __attribute__((nomips16,at_vector(_SER1_VECTOR),interrupt(_SER1_IPL_ISR))) IntSer1Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer1Handler(void)
 #endif
@@ -839,7 +1027,7 @@ void __attribute__((interrupt(), nomips16)) IntSer1Handler(void)
 #if defined(_SER2_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER2_VECTOR),interrupt(_SER2_IPL_ISR))) IntSer2Handler(void)
+void __attribute__((nomips16,at_vector(_SER2_VECTOR),interrupt(_SER2_IPL_ISR))) IntSer2Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer2Handler(void)
 #endif
@@ -867,7 +1055,7 @@ void __attribute__((interrupt(), nomips16)) IntSer2Handler(void)
 #if defined(_SER3_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER3_VECTOR),interrupt(_SER3_IPL_ISR))) IntSer3Handler(void)
+void __attribute__((nomips16,at_vector(_SER3_VECTOR),interrupt(_SER3_IPL_ISR))) IntSer3Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer3Handler(void)
 #endif
@@ -895,7 +1083,7 @@ void __attribute__((interrupt(), nomips16)) IntSer3Handler(void)
 #if defined(_SER4_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER4_VECTOR),interrupt(_SER4_IPL_ISR))) IntSer4Handler(void)
+void __attribute__((nomips16,at_vector(_SER4_VECTOR),interrupt(_SER4_IPL_ISR))) IntSer4Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer4Handler(void)
 #endif
@@ -923,7 +1111,7 @@ void __attribute__((interrupt(), nomips16)) IntSer4Handler(void)
 #if defined(_SER5_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER5_VECTOR),interrupt(_SER5_IPL_ISR))) IntSer5Handler(void)
+void __attribute__((nomips16,at_vector(_SER5_VECTOR),interrupt(_SER5_IPL_ISR))) IntSer5Handler(void)
 #else
  void __attribute__((interrupt(), nomips16)) IntSer5Handler(void)
 #endif
@@ -951,7 +1139,7 @@ void __attribute__((nomips16,vector(_SER5_VECTOR),interrupt(_SER5_IPL_ISR))) Int
 #if defined(_SER6_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER6_VECTOR),interrupt(_SER6_IPL_ISR))) IntSer6Handler(void)
+void __attribute__((nomips16,at_vector(_SER6_VECTOR),interrupt(_SER6_IPL_ISR))) IntSer6Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer6Handler(void)
 #endif
@@ -979,7 +1167,7 @@ void __attribute__((interrupt(), nomips16)) IntSer6Handler(void)
 #if defined(_SER7_VECTOR)
 
 #if defined(__PIC32MZXX__)
-void __attribute__((nomips16,vector(_SER7_VECTOR),interrupt(_SER7_IPL_ISR))) IntSer7Handler(void)
+void __attribute__((nomips16,at_vector(_SER7_VECTOR),interrupt(_SER7_IPL_ISR))) IntSer7Handler(void)
 #else
 void __attribute__((interrupt(), nomips16)) IntSer7Handler(void)
 #endif

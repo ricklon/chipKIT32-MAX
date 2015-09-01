@@ -201,7 +201,7 @@
       </filterchain>
     </loadfile>
     <!-- <echo message="base revision is ${revision.base}." /> -->
-
+    <echo message="revision.base: ${revision.base} compared to revision ${revision}" />
     <condition property="revision.correct">
       <!-- Using contains because I can't figure out how to get rid of the
 	   LF in revision.base. Please file a bug if you have a fix. -->
@@ -314,13 +314,11 @@
 	  <gunzip src="macosx/template.dmg.gz" dest="macosx/working.dmg" />
 		-->
     <mkdir dir="macosx/working_dir" />
-    <!--
 	  <copy todir="macosx/working_dir">
 		  <fileset dir="macosx/work">
 			  <exclude name="**/mpideTestSuite/**" />
 		  </fileset>
     </copy>
-    -->
 	  <copy file="macosx/dist/FTDIUSBSerialDriver_v2_2_18.dmg" todir="macosx/working_dir" />
 
 
@@ -915,25 +913,9 @@ Description: chipKIT MPIDE Development environment
 
     <unzip dest="windows/work" src="windows/jre.zip" overwrite="false"/>
 
-    <!--
-    <zip basedir="windows/work"
-	 prefix="mpide-${version}"
-	 destfile="windows/mpide-${version}.zip" />
-    <zip basedir="windows/work"
-	 prefix="mpide-${version}"
-	 destfile="windows/mpide-${version}-expert.zip"
-	 excludes="java/**" />
-    -->
-
     <zip destfile="windows/mpide-${version}.zip">
       <zipfileset dir="windows/work"
 		  prefix="mpide-${version}" />
-    </zip>
-
-    <zip destfile="windows/mpide-${version}-expert.zip">
-      <zipfileset dir="windows/work"
-		  prefix="mpide-${version}"
-		  excludes="java/**" />
     </zip>
 
     <echo>
@@ -941,7 +923,6 @@ Description: chipKIT MPIDE Development environment
       mpide for Windows was built. Grab the archive from
 
       windows/mpide-${version}.zip
-      windows/mpide-${version}-expert.zip
       =======================================================
     </echo>
   </target>

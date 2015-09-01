@@ -6,9 +6,11 @@
 #include <string.h>
 
 #define     USB_SERIAL_MIN_BUFFER_FREE      128
+// Number of milliseconds we will wait before giving up while trying to 
+// send data up to the PC.
+#define     USB_CDC_INACTIVE_TIMEOUT_MS     50
 
 extern boolean gCdcacm_active;
-extern boolean gConnected;
 
 typedef void (*cdcacm_reset_cbfn)(void);
 typedef boolean (*cdcacm_storedata_cbfn)(const byte *buffer, int length);

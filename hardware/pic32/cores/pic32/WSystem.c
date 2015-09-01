@@ -31,7 +31,7 @@
 /*  Revision History:													*/
 /*																		*/
 /*	08/23/2012(GeneApperson): Created									*/
-/*	06/18/2013(Keith Vogel): Finished the interrupt vector handler									*/
+/*	06/18/2013(Keith Vogel): Finished the interrupt vector handler		*/
 /*																		*/
 /************************************************************************/
 
@@ -47,6 +47,7 @@
 #include	<p32_defs.h>
 
 #include	"wiring.h"
+#include    "Board_Defs.h"
 
 /* ------------------------------------------------------------ */
 /*				Local Type Definitions							*/
@@ -79,7 +80,112 @@ void (*volatile _isr_primary_install[NUM_INT_VECTOR]) (void) = {[0 ... NUM_INT_V
 /* ------------------------------------------------------------ */
 /*			Interrupt Vector Management Functions				*/
 /* ------------------------------------------------------------ */
-#if !defined(__PIC32MZXX__)
+#if defined(__PIC32MZXX__)
+
+/***	initIntVector
+**
+**	Parameters:
+**
+**	Return Value:
+**		none
+**
+**	Errors:
+**		none
+**
+**	Description:
+**		Initializes the RAM IntVector table to
+**		all of the compiler generated interrupt vectors
+**		This will provide backwards compatibility should
+**		someone not set their interrupt vector by calling
+**		setIntVector; but by not setting the IntVector
+**      your vector may be maked by a conflicting peripheral
+*/
+void initIntVector(void)
+{
+    return;
+}
+
+/* ------------------------------------------------------------ */
+/***	getIntVector
+**
+**	Parameters:
+**		vec		- interrupt vector number
+**
+**	Return Value:
+**              The current ISR function
+**
+**	Errors:
+**              NULL if vector is out of range
+**
+**	Description:
+**          Returns the currently assigned ISR function without
+**          changeing anything.
+**
+*/
+isrFunc getIntVector(int vec)
+{
+    uint32_t isrAddr = ((uint32_t *) &OFF000)[vec] + (uint32_t) &_ebase_address;
+    return((isrFunc) isrAddr);
+}
+
+/***	setIntVector
+**
+**	Parameters:
+**		vec		- interrupt vector number
+**		func	- interrupt service routine to install
+**
+**	Return Value:
+**		Returns pointer to previous interrupt service routine for the vector
+**              This may return the compiler installed routine if the compiler set one.
+**              It will return the address of the general exception handler if no previous ISR was set.
+**              It will return 0/NULL if the vector requested is out of range of the processor
+**
+**	Errors:
+**		None as this is used in begin() methods that have no error returns.
+**
+**	Description:
+**		Dynamically install an interrupt service routine for the specified
+**		interrupt vector; This will blast over exiting ones without an error
+**      because many Arduino begin methods return no errors and just expect this to
+**      work. However, this may overwrite a previeously installed ISR.
+**
+**      This does not change the priority level of the interrupt routine
+*/
+isrFunc setIntVector(int vec, isrFunc func)
+{
+    isrFunc isrAddr = getIntVector(vec);
+ 
+    ((uint32_t *) &OFF000)[vec] = (uint32_t) func - (uint32_t) &_ebase_address;
+
+    return(isrAddr);
+}
+
+/* ------------------------------------------------------------ */
+/***	clearIntVector
+**
+**	Parameters:
+**		vec		- interrupt vector number
+**
+**	Return Value:
+**      Returns the currently set ISR before clearing it
+**
+**	Errors:
+**		Returns NULL if the vector number specified is out of range
+**
+**	Description:
+**		Sets the priority to 0 thus disabling the ISR, and sets the 
+**      pointer to the general exception handler.
+*/
+isrFunc clearIntVector(int vec)
+{
+    isrFunc isrAddr = getIntVector(vec);
+ 
+    ((uint32_t *) &OFF000)[vec] = (uint32_t) &_GEN_EXCPT_ADDR - (uint32_t) &_ebase_address;
+
+    return(isrAddr);
+}
+
+#else
 /***	initIntVector
 **
 **	Parameters:
@@ -632,7 +738,7 @@ void __attribute__((nomips16)) writeCoreTimer(uint32_t tmr)
 void __attribute__ ((nomips16)) _configSystem(uint32_t clk)
 {
 	uint32_t	stInt;
-#ifdef _PCACHE
+#if defined(_CHECON_PREFEN_POSITION)
 	uint32_t	stCache;
     uint32_t	wait;
 	register unsigned long tmp;
@@ -644,8 +750,12 @@ void __attribute__ ((nomips16)) _configSystem(uint32_t clk)
 	*/
 #if defined(__PIC32MZXX__)
 
-    // set up the ADCs
+// If alternate ADC implementation
+#if defined(__ALT_ADC_IMPL__)
+    initADC();
 
+// EC MZ ADC code
+#elif defined(__PIC32MZECADC__)
     /* Configure AD1CON1 */
     AD1CON1 = 0;                // No AD1CON1 features are enabled including: Stop-in-Idle, early
                                 // interrupt, filter delay Fractional mode and scan trigger source.
@@ -721,11 +831,19 @@ void __attribute__ ((nomips16)) _configSystem(uint32_t clk)
     AD1IMODbits.SH4MOD =  0;            // put in unipolar encoding
     AD1IMODbits.SH5MOD =  0;            // put in unipolar encoding
 
+#elif defined(__PIC32MZEFADC__)
+    #error EF ADC code not implemented yet
+
+// unknown ADC code
+#else
+    #error ADC code for this MZ must be added in WSystems.c and wiring_analog.c
+#endif
+
 #else
 	BMXCONCLR = (1 << _BMXCON_BMXWSDRM_POSITION);
 #endif
 
-#ifdef _PCACHE
+#if defined(_CHECON_PREFEN_POSITION)
 
 	stCache = CHECON;
 
@@ -754,6 +872,15 @@ void __attribute__ ((nomips16)) _configSystem(uint32_t clk)
 	stCache |= (wait << _CHECON_PFMWS_POSITION);
 
 	CHECON = stCache;
+
+#elif defined(_PRECON_PREFEN_POSITION)
+  // 
+  // Set wait states and enable prefetch buffer 
+  // 
+  PRECON = 0u 
+         | (2u << _PRECON_PFMWS_POSITION)  // 2 wait states 
+         | (3u << _PRECON_PREFEN_POSITION); // Enable prefetch for instructions + data 
+
 
 #endif
 

@@ -153,16 +153,14 @@
 ** the default SPI port as it's pin numbers stay constant on all
 ** devices.
 */
-/// TODO: For Fubarino, do we need these?
-const static uint8_t SS   = 105;		// PIC32 SS2
-const static uint8_t MOSI =	104;		// PIC32 SDO2
-const static uint8_t MISO = 103;		// PIC32 SDI2
-const static uint8_t SCK  = 102;		// PIC32 SCK2
+const static uint8_t SS   = 27;		// PIC32 SS2
+const static uint8_t MOSI = 26;		// PIC32 SDO2
+const static uint8_t MISO = 25;		// PIC32 SDI2
+const static uint8_t SCK  = 24;		// PIC32 SCK2
 
 /* The Digilent DSPI library uses these ports.
 */
-/// TODO: For Fubarino, do we need these?
-#define	PIN_DSPI0_SS	105
+#define	PIN_DSPI0_SS	27
 #define PIN_DSPI1_SS    1
 
 /* ------------------------------------------------------------ */
@@ -237,7 +235,7 @@ const static uint8_t SCK  = 102;		// PIC32 SCK2
 //#define	digitalPinToAnalog(P) ( (((P) > 15) && ((P) < 32)) ? (P)-16 : NOT_ANALOG_PIN )
 // This definition can be used for the non-default case where there
 // is a mapping table to go from digital pin to analog pin
-#define	digitalPinToAnalog(P) ( digital_pin_to_analog_PGM[P] )
+#define	digitalPinToAnalog(P) ( ((P) > 14 ) ? digital_pin_to_analog_PGM[P] : digital_pin_to_analog_PGM[(14 - P) + 30] )
 
 // This definition can be used for the default one-to-one mapping
 //#define analogInPinToChannel(P) ( P )

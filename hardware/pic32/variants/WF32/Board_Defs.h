@@ -121,6 +121,18 @@
 */
 
 /* ------------------------------------------------------------ */
+/*					Pots and Monitor Declarations   			*/
+/* ------------------------------------------------------------ */
+
+/* Define other components on the board
+*/
+#define	PIN_POT1        61	
+#define	PIN_VIN_MON     60
+#define PIN_5V0_ENABLE  64
+#define ADCRANGE        1024ul              // analog read will return a max number of ADCRANGE-1
+
+
+/* ------------------------------------------------------------ */
 /*					Servo Pin Declarations						*/
 /* ------------------------------------------------------------ */
 
